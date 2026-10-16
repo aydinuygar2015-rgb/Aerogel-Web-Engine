@@ -1,0 +1,1887 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aerogel Web Engine v1.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    
+    <style>
+        :root {
+            --bg-darker: #151515;
+            --bg-dark: #202020;
+            --bg-panel: #2d2d2d;
+            --border-color: #111111;
+            --border-light: #404040;
+            --text-main: #dddddd;
+            --accent-blue: #007acc;
+            --accent-blue-hover: #0098ff;
+            --input-bg: #1e1e1e;
+            --js-yellow: #f1e05a;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 13px;
+            margin: 0; padding: 0; height: 100vh; overflow: hidden; user-select: none;
+        }
+
+        button.ui-btn {
+            background-color: var(--bg-panel); color: var(--text-main);
+            border: 1px solid var(--border-light); padding: 5px 14px;
+            cursor: pointer; border-radius: 4px; font-size: 12px; transition: background-color 0.2s;
+        }
+        button.ui-btn:hover { background-color: var(--border-light); }
+        button.ui-btn.primary { background-color: var(--accent-blue); border-color: var(--accent-blue); color: white;}
+        button.ui-btn.primary:hover { background-color: var(--accent-blue-hover); }
+        button.ui-btn.active { background-color: var(--accent-blue); border-color: var(--accent-blue); }
+        
+        input.ui-input, select.ui-select {
+            background-color: var(--input-bg); color: var(--text-main);
+            border: 1px solid var(--border-light); padding: 5px 8px;
+            border-radius: 3px; font-size: 12px; outline: none; width: 100%;
+        }
+        input.ui-input:focus { border-color: var(--accent-blue); }
+        input[type="checkbox"] { accent-color: var(--accent-blue); width: 16px; height: 16px; cursor: pointer; }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-darker); }
+        ::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #777; }
+
+        #hub-view, #editor-view { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; }
+        #editor-view { display: none; }
+        #hub-view { background-color: #1a1a1a; z-index: 50; }
+
+        .panel-header {
+            background-color: var(--bg-darker); border-bottom: 1px solid var(--border-color);
+            padding: 8px 12px; font-weight: bold; display: flex; align-items: center; justify-content: space-between;
+        }
+        
+        #viewport-container { position: relative; flex: 1; background: #2b333a; overflow: hidden; outline: none; }
+        #scene-3d, #scene-2d-menu, #scene-code { width: 100%; height: 100%; position: absolute; top:0; left:0; }
+        #scene-2d-menu { background-color: #111; display: none; overflow: hidden; }
+        #scene-code { background-color: #1e1e1e; display: none; flex-direction: column; }
+
+        #viewport-toolbar {
+            position: absolute; top: 10px; left: 10px; z-index: 10; display: flex; gap: 4px; background: rgba(0,0,0,0.6); padding: 6px; border-radius: 6px;
+        }
+
+        .tree-item { padding: 6px 10px; cursor: pointer; border-bottom: 1px solid transparent; display: flex; align-items: center; justify-content: space-between;}
+        .tree-item:hover { background: rgba(255,255,255,0.08); }
+        .tree-item.selected { background: var(--accent-blue); color: white; }
+        .tree-item.script-item { color: var(--js-yellow); font-family: monospace; font-size: 11px; }
+        .tree-item.drag-over { background: rgba(0, 122, 204, 0.4) !important; border: 1px dashed var(--accent-blue); }
+
+        .asset-btn {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: var(--bg-dark); border: 1px solid var(--border-light);
+            border-radius: 6px; padding: 12px; cursor: pointer; transition: 0.2s; min-width: 90px;
+        }
+        .asset-btn:hover { background: var(--border-light); transform: translateY(-2px); }
+
+        .custom-context-menu {
+            position: absolute; background: var(--bg-panel); border: 1px solid var(--border-light);
+            box-shadow: 2px 2px 8px rgba(0,0,0,0.6); display: none; z-index: 100; padding: 4px 0; border-radius: 4px;
+        }
+        .context-item { padding: 8px 16px; cursor: pointer; }
+        .context-item:hover { background: var(--accent-blue); }
+
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); display: none; align-items: center; justify-content: center; z-index: 200;
+        }
+        .modal-box {
+            background: var(--bg-panel); border: 1px solid var(--border-light); border-radius: 6px; width: 450px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+        }
+        
+        .prop-row { display: flex; margin-bottom: 10px; align-items: center; }
+        .prop-label { width: 90px; color: #bbb; font-size: 11px; font-weight: bold; }
+        .prop-inputs { display: flex; gap: 6px; flex: 1; align-items: center; }
+
+        .drop-zone-active { background-color: rgba(241, 224, 90, 0.2) !important; border-color: var(--js-yellow) !important; }
+    </style>
+</head>
+<body oncontextmenu="return false;">
+
+    <div id="hub-view">
+        <div class="bg-[#111] p-5 text-xl font-bold flex justify-between items-center border-b border-black">
+            <span class="text-white">Aerogel Web Engine <span class="text-xs text-emerald-400 font-semibold ml-2">v1.0</span></span>
+        </div>
+        <div class="flex flex-1 overflow-hidden">
+            <div class="w-56 bg-[#1a1a1a] p-4 border-r border-black">
+                <div class="py-3 px-4 bg-[#007acc]/20 border-l-4 border-[#007acc] text-white font-medium cursor-pointer rounded-r">Projeler</div>
+            </div>
+            <div class="flex-1 p-10 bg-[#202020] overflow-y-auto">
+                <div class="flex justify-between items-center mb-8">
+                    <h2 class="text-3xl font-light text-white">Projeler</h2>
+                    <button class="ui-btn primary px-5 py-2 text-sm" onclick="uiNewProject()">+ Yeni Proje</button>
+                </div>
+                <div id="project-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="editor-view">
+        <div class="h-12 bg-[#151515] border-b border-black flex items-center justify-between px-4 shrink-0 shadow-md z-20">
+            <div class="flex items-center gap-6">
+                <span id="current-project-name" class="font-bold text-white text-lg tracking-wide">Proje Adı</span>
+                <div class="flex bg-black rounded-md p-1 gap-1">
+                    <button id="btn-mode-3d" class="ui-btn active" onclick="setEditorMode('3d')">Sahne (3D)</button>
+                    <button id="btn-mode-menu" class="ui-btn" onclick="setEditorMode('menu')">Menü (2D)</button>
+                    <button id="btn-mode-code" class="ui-btn text-yellow-400" onclick="setEditorMode('code')">Kod (JS)</button>
+                </div>
+            </div>
+            <div class="flex gap-3">
+                <button class="ui-btn primary flex items-center gap-2" onclick="uiOpenBuildModal()">
+                    <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> Derle ve İndir
+                </button>
+                <button class="ui-btn" id="btn-save" onclick="uiSaveProject()">Kaydet (Ctrl+S)</button>
+                <button class="ui-btn hover:bg-red-900 hover:text-white" onclick="uiCloseProject()">Kapat</button>
+            </div>
+        </div>
+
+        <div class="flex flex-1 overflow-hidden relative">
+            <div class="w-64 bg-[#252525] border-r border-black flex flex-col shrink-0 z-10">
+                <div class="panel-header shadow-sm cursor-context-menu hover:bg-[#333] transition" id="hierarchy-header">
+                    Hiyerarşi <span class="text-[10px] text-gray-500 font-normal">(Sağ Tıkla: Script)</span>
+                </div>
+                <div id="hierarchy-list" class="flex-1 overflow-y-auto p-2"></div>
+                <div id="hierarchy-scripts-list" class="overflow-y-auto p-2 border-t border-[#111]"></div>
+            </div>
+
+            <div id="viewport-container" class="flex flex-col focus:outline-none flex-1 relative" tabindex="0">
+                <div id="viewport-toolbar">
+                    <button class="ui-btn active" id="btn-trans" onclick="setTransformMode('translate')">Taşı (T)</button>
+                    <button class="ui-btn" id="btn-rot" onclick="setTransformMode('rotate')">Döndür (R)</button>
+                    <button class="ui-btn" id="btn-scl" onclick="setTransformMode('scale')">Ölçekle (Y/S)</button>
+                </div>
+                <div id="scene-3d"></div>
+                <div id="scene-2d-menu"></div>
+                <div id="scene-code">
+                    <div class="w-full bg-[#1a1a1a] border-b border-black flex justify-between items-center p-2">
+                        <div class="text-yellow-400 font-mono text-sm pl-2 flex items-center gap-2">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+                            <span id="code-editor-title">Dosya Seçin</span>
+                        </div>
+                        <button class="ui-btn primary bg-green-700 border-green-700 hover:bg-green-600" id="btn-save-code" onclick="saveCurrentScriptContent()">
+                            Kodu Kaydet
+                        </button>
+                    </div>
+                    <textarea id="code-editor-textarea" spellcheck="false" class="flex-1 bg-[#1e1e1e] text-[#d4d4d4] font-mono p-4 outline-none border-none resize-none disabled:opacity-50" disabled placeholder="Hiyerarşiden bir JS dosyasına çift tıklayarak düzenleyin..."></textarea>
+                </div>
+            </div>
+
+            <div class="w-80 bg-[#252525] border-l border-black flex flex-col shrink-0 z-10" id="inspector-drop-zone" ondragover="handleDragOver(event)" ondrop="handleDrop(event)" ondragleave="handleDragLeave(event)">
+                <div class="panel-header shadow-sm">Özellikler (Inspector)</div>
+                <div id="inspector-panel" class="flex-1 p-5 overflow-y-auto hidden">
+                    <div class="font-bold mb-5 border-b border-[#444] pb-2 text-lg text-white" id="insp-name">Obje Adı</div>
+                    
+                    <div id="transform-section">
+                        <div class="prop-row">
+                            <span class="prop-label">Pozisyon</span>
+                            <div class="prop-inputs">
+                                <input type="number" step="0.1" id="insp-px" class="ui-input" onchange="updateObjectFromUI()">
+                                <input type="number" step="0.1" id="insp-py" class="ui-input" onchange="updateObjectFromUI()">
+                                <input type="number" step="0.1" id="insp-pz" class="ui-input" onchange="updateObjectFromUI()">
+                            </div>
+                        </div>
+                        
+                        <div class="prop-row">
+                            <span class="prop-label">Rotasyon</span>
+                            <div class="prop-inputs">
+                                <input type="number" step="1" id="insp-rx" class="ui-input" onchange="updateObjectFromUI()">
+                                <input type="number" step="1" id="insp-ry" class="ui-input" onchange="updateObjectFromUI()">
+                                <input type="number" step="1" id="insp-rz" class="ui-input" onchange="updateObjectFromUI()">
+                            </div>
+                        </div>
+
+                        <div class="prop-row">
+                            <span class="prop-label">Boyut</span>
+                            <div class="prop-inputs">
+                                <input type="number" step="0.1" id="insp-sx" class="ui-input" onchange="updateObjectFromUI()">
+                                <input type="number" step="0.1" id="insp-sy" class="ui-input" onchange="updateObjectFromUI()">
+                                <input type="number" step="0.1" id="insp-sz" class="ui-input" onchange="updateObjectFromUI()">
+                            </div>
+                        </div>
+
+                        <div class="prop-row mt-4">
+                            <span class="prop-label">Renk</span>
+                            <div class="prop-inputs">
+                                <input type="color" id="insp-col" class="ui-input h-8 p-0 border-0 cursor-pointer" onchange="updateObjectFromUI()">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="border-t border-[#444] my-4 pt-4" id="script-section">
+                        <div class="text-xs text-gray-400 mb-2 italic">JS dosyasını buraya sürükleyin</div>
+                        <div class="prop-row">
+                            <span class="prop-label text-yellow-400">Script Dosyası</span>
+                            <div class="prop-inputs flex items-center justify-between bg-black rounded border border-[#333] p-1 w-full">
+                                <span id="insp-script-name" class="text-xs font-mono px-2 truncate">Yok</span>
+                                <button class="text-red-500 hover:text-red-400 text-xs px-2" onclick="removeScriptFromObject()">✕</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="border-t border-[#444] my-4 pt-4" id="physics-section">
+                        <div class="prop-row">
+                            <span class="prop-label" title="Fiziksel temasları açar">Çarpışma</span>
+                            <div class="prop-inputs">
+                                <input type="checkbox" id="insp-colli" onchange="updateObjectFromUI()">
+                            </div>
+                        </div>
+                        
+                        <div id="player-props" style="display: none;">
+                            <div class="prop-row mt-2">
+                                <span class="prop-label">Hareket Hızı</span>
+                                <div class="prop-inputs">
+                                    <input type="number" step="0.05" id="insp-speed" class="ui-input" onchange="updateObjectFromUI()">
+                                </div>
+                            </div>
+                            <div class="prop-row mt-2">
+                                <span class="prop-label">Zıplama Gücü</span>
+                                <div class="prop-inputs">
+                                    <input type="number" step="0.05" id="insp-jump" class="ui-input" onchange="updateObjectFromUI()">
+                                </div>
+                            </div>
+                            <div class="prop-row mt-2">
+                                <span class="prop-label">Yerçekimi</span>
+                                <div class="prop-inputs">
+                                    <input type="number" step="0.002" id="insp-gravity" class="ui-input" onchange="updateObjectFromUI()">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="inspector-empty" class="flex-1 flex items-center justify-center text-gray-500 text-center p-6 italic pointer-events-none">
+                    Özelliklerini görüntülemek ve düzenlemek için sahneden bir nesne seçin.
+                </div>
+            </div>
+        </div>
+
+        <div class="h-44 bg-[#1e1e1e] border-t border-black flex flex-col shrink-0 shadow-[0_-5px_10px_rgba(0,0,0,0.3)] z-20" id="assets-panel-container">
+            <div class="panel-header">Varlıklar (Sahneye Sürükle veya Tıkla)</div>
+            <div class="flex-1 p-5 flex gap-5 overflow-x-auto" id="assets-panel">
+                <div class="asset-btn" onclick="addAssetToScene('ground')">
+                    <div class="w-12 h-12 bg-[#556b2f] border-2 border-[#111] mb-2 transform perspective-[100px] rotateX-45"></div>
+                    Zemin Ekle
+                </div>
+                <div class="asset-btn" onclick="addAssetToScene('player')">
+                    <div class="w-8 h-12 bg-[#00aaff] rounded-full border-2 border-[#111] mb-2"></div>
+                    Oyuncu (Player)
+                </div>
+                <div class="asset-btn" onclick="addAssetToScene('cube')">
+                    <div class="w-10 h-10 bg-[#ccc] border-2 border-[#111] mb-2 shadow-inner"></div>
+                    Küp Ekle
+                </div>
+                <div class="asset-btn" onclick="addAssetToScene('sphere')">
+                    <div class="w-10 h-10 bg-[#ccc] rounded-full border-2 border-[#111] mb-2 shadow-inner"></div>
+                    Küre Ekle
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="context-menu" class="custom-context-menu">
+        <div class="context-item" onclick="triggerAddMenuButton('normal')">+ Normal Buton Ekle</div>
+        <div class="context-item" onclick="triggerAddMenuButton('start')">+ Başlat (Start) Butonu</div>
+    </div>
+
+    <div id="hierarchy-context-menu" class="custom-context-menu">
+        <div class="context-item text-yellow-400 font-bold" onclick="uiAddScript()">+ JavaScript Dosyası Oluştur</div>
+    </div>
+
+    <div id="modal-prompt" class="modal-overlay">
+        <div class="modal-box">
+            <div class="panel-header" id="prompt-title">Sistem Mesajı</div>
+            <div class="p-5 flex flex-col gap-4">
+                <label id="prompt-message" class="text-sm text-gray-300">Lütfen değeri giriniz:</label>
+                <input type="text" id="prompt-input" class="ui-input py-2">
+            </div>
+            <div class="p-4 bg-[#222] border-t border-black flex justify-end gap-3 rounded-b-6px">
+                <button class="ui-btn" onclick="closePrompt(false)">İptal</button>
+                <button class="ui-btn primary px-6" onclick="closePrompt(true)">Tamam</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-build" class="modal-overlay">
+        <div class="modal-box w-[500px]">
+            <div class="panel-header bg-[#007acc] text-white border-b-0">Oyununu Derle (Build)</div>
+            <div class="p-6 flex flex-col gap-5 bg-[#252525]">
+                <div>
+                    <label class="block mb-2 font-bold text-gray-300">Grafik API Seçimi</label>
+                    <select id="build-api" class="ui-select py-2">
+                        <option value="webgpu">WebGPU (WGSL Shader Klasörü + Gölgeler)</option>
+                        <option value="webgl">WebGL (GLSL Shader Klasörü + Gölgeler)</option>
+                        <option value="canvas">HTML Canvas 2D (Tek Dosya, Gölgesiz)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block mb-2 font-bold text-gray-300">Kamera Görüş Modu</label>
+                    <select id="build-cam-mode" class="ui-select py-2">
+                        <option value="cinematic">Sinematik (GTA 5 Tarzı 3. Şahıs Arkadan Takip + Dönüş Yatması)</option>
+                        <option value="fps">FPS (Birinci Şahıs Göz Hizası Standart)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block mb-2 font-bold text-gray-300">Oyun Motoru Kütüphanesi</label>
+                    <select id="build-threejs" class="ui-select py-2">
+                        <option value="yes">Three.js Kullanılsın (Tam Fizik, Kaliteli Işıklandırma, JS Desteği)</option>
+                        <option value="no">Three.js Kullanılmasın (Saf Vanilla Özel Motor)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="p-4 bg-[#1a1a1a] border-t border-black flex justify-end gap-3 rounded-b-6px">
+                <button class="ui-btn" onclick="closeBuildModal()">İptal</button>
+                <button class="ui-btn primary px-8 font-bold" onclick="executeBuild()">Derle ve İndir</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let projects = JSON.parse(localStorage.getItem('aerogel_projects') || localStorage.getItem('webity_projects') || '[]');
+        let currentProject = null;
+        let editorMode = '3d'; 
+        
+        let sceneObjectsData = []; 
+        let menuObjectsData = [];  
+        let scriptsData = [];
+        let selectedObjectId = null;
+        let editingScriptId = null;
+
+        window.onload = renderHub;
+
+        function renderHub() {
+            const list = document.getElementById('project-list');
+            list.innerHTML = '';
+            
+            if(projects.length === 0) {
+                list.innerHTML = '<div class="col-span-full text-gray-500 italic p-6 text-center bg-[#1e1e1e] rounded border border-gray-800">Hiç proje bulunamadı. Yeni bir tane oluşturarak motoru keşfedin!</div>';
+            }
+
+            projects.forEach(p => {
+                const el = document.createElement('div');
+                el.className = 'bg-[#2a2a2a] p-5 rounded-lg cursor-pointer hover:bg-[#333] border border-transparent hover:border-[#007acc] transition shadow-md flex justify-between items-start';
+                el.innerHTML = `
+                    <div>
+                        <div class="font-bold text-lg text-white mb-1">${p.name}</div>
+                        <div class="text-xs text-gray-400">Son Değişiklik: ${new Date(p.lastModified).toLocaleString()}</div>
+                        <div class="text-xs text-gray-500 mt-2">Objeler: ${(p.sceneObjects?.length||0) + (p.menuObjects?.length||0)} | Scriptler: ${(p.scripts?.length||0)}</div>
+                    </div>
+                    <button class="ui-btn bg-red-900 border-red-700 hover:bg-red-700 text-xs px-2 py-1" title="Projeyi Sil" onclick="event.stopPropagation(); deleteProject('${p.id}')">✕</button>
+                `;
+                el.onclick = () => loadProject(p.id);
+                list.appendChild(el);
+            });
+        }
+
+        function uiNewProject() {
+            promptUser("Yeni Proje Adını Girin:", "Oyunum", (name) => {
+                if(!name) return;
+                const newProj = {
+                    id: 'proj_' + Date.now(),
+                    name: name,
+                    lastModified: Date.now(),
+                    sceneObjects: [
+                        { id: 'obj_kalite', type: 'settings', name: 'Kalite (Ayarlar)', position:{x:0,y:0,z:0}, scriptId: null, parentId: null, undeletable: true }
+                    ],
+                    menuObjects: [
+                        { id: 'btn_start', type: 'start', text: 'BAŞLA', color: '#28a745', x: window.innerWidth/2 - 70, y: window.innerHeight/2 - 25, scriptId: null }
+                    ],
+                    scripts: []
+                };
+                projects.push(newProj);
+                saveProjectsToStorage();
+                loadProject(newProj.id);
+            });
+        }
+
+        function deleteProject(id) {
+            projects = projects.filter(p => p.id !== id);
+            saveProjectsToStorage();
+            renderHub();
+        }
+
+        function saveProjectsToStorage() { localStorage.setItem('aerogel_projects', JSON.stringify(projects)); }
+
+        function loadProject(id) {
+            currentProject = projects.find(p => p.id === id);
+            if(!currentProject) return;
+
+            document.getElementById('hub-view').style.display = 'none';
+            document.getElementById('editor-view').style.display = 'flex';
+            document.getElementById('current-project-name').innerText = currentProject.name;
+
+            sceneObjectsData = JSON.parse(JSON.stringify(currentProject.sceneObjects || []));
+            menuObjectsData = JSON.parse(JSON.stringify(currentProject.menuObjects || []));
+            scriptsData = JSON.parse(JSON.stringify(currentProject.scripts || []));
+            
+            if(!sceneObjectsData.find(o => o.id === 'obj_kalite')) {
+                sceneObjectsData.unshift({ id: 'obj_kalite', type: 'settings', name: 'Kalite (Ayarlar)', position:{x:0,y:0,z:0}, scriptId: null, parentId: null, undeletable: true });
+            }
+
+            sceneObjectsData.forEach(o => {
+                if(o.type !== 'settings') {
+                    if(o.collision === undefined) o.collision = true;
+                    if(o.parentId === undefined) o.parentId = null;
+                    if(o.type === 'player') {
+                        if(o.speed === undefined) o.speed = 0.15;
+                        if(o.jumpForce === undefined) o.jumpForce = 0.2;
+                        if(o.gravity === undefined) o.gravity = 0.012;
+                    }
+                }
+            });
+
+            selectedObjectId = null;
+            editingScriptId = null;
+            setEditorMode('3d');
+            initThreeJS();
+            rebuildSceneFromData();
+            rebuildMenuFromData();
+            updateHierarchyUI();
+            updateInspectorUI();
+            
+            document.getElementById('viewport-container').focus();
+        }
+
+        function uiSavePropertySync() {
+            sceneObjectsData.forEach(data => {
+                if(sceneMeshes[data.id] && data.type !== 'settings') {
+                    const m = sceneMeshes[data.id];
+                    data.position = { x: m.position.x, y: m.position.y, z: m.position.z };
+                    data.rotation = { x: m.rotation.x, y: m.rotation.y, z: m.rotation.z };
+                    data.scale = { x: m.scale.x, y: m.scale.y, z: m.scale.z };
+                    data.color = m.material.color.getHex();
+                }
+            });
+        }
+
+        function uiSaveProject() {
+            if(!currentProject) return;
+            uiSavePropertySync();
+            saveCurrentScriptContent();
+
+            currentProject.sceneObjects = JSON.parse(JSON.stringify(sceneObjectsData));
+            currentProject.menuObjects = JSON.parse(JSON.stringify(menuObjectsData));
+            currentProject.scripts = JSON.parse(JSON.stringify(scriptsData));
+            currentProject.lastModified = Date.now();
+            
+            const index = projects.findIndex(p => p.id === currentProject.id);
+            if(index !== -1) projects[index] = currentProject;
+            saveProjectsToStorage();
+            
+            const btn = document.getElementById('btn-save');
+            const ogText = btn.innerText;
+            btn.innerText = "Kaydedildi ✓";
+            btn.style.backgroundColor = "#28a745";
+            btn.style.borderColor = "#28a745";
+            setTimeout(() => { btn.innerText = ogText; btn.style.backgroundColor = ""; btn.style.borderColor = ""; }, 1500);
+        }
+
+        function setEditorMode(mode) {
+            editorMode = mode;
+            document.getElementById('btn-mode-3d').classList.toggle('active', mode === '3d');
+            document.getElementById('btn-mode-menu').classList.toggle('active', mode === 'menu');
+            document.getElementById('btn-mode-code').classList.toggle('active', mode === 'code');
+            
+            document.getElementById('scene-3d').style.display = mode === '3d' ? 'block' : 'none';
+            document.getElementById('viewport-toolbar').style.display = mode === '3d' ? 'flex' : 'none';
+            document.getElementById('scene-2d-menu').style.display = mode === 'menu' ? 'block' : 'none';
+            document.getElementById('scene-code').style.display = mode === 'code' ? 'flex' : 'none';
+            
+            const assets = document.getElementById('assets-panel-container');
+            assets.style.opacity = mode === '3d' ? '1' : '0.4';
+            assets.style.pointerEvents = mode === '3d' ? 'auto' : 'none';
+
+            selectObject(selectedObjectId, editorMode);
+        }
+
+        function uiAddScript() {
+            document.getElementById('hierarchy-context-menu').style.display = 'none';
+            promptUser("JavaScript Dosya Adı (Örn: hareket):", "script", (name) => {
+                if(!name) return;
+                const finalName = name.endsWith('.js') ? name : name + '.js';
+                const newScript = {
+                    id: 'script_' + Date.now(),
+                    name: finalName,
+                    content: `// ${finalName} dosyasına hoşgeldiniz!\n// mesh: Objenin 3D Modeli\n// data: Objenin verileri (pozisyon, gravity vb.)\n// scene, camera: Three.js nesneleri\n// time: Oyun süresi (saniye)\n`
+                };
+                scriptsData.push(newScript);
+                updateHierarchyUI();
+                openScriptInEditor(newScript.id);
+            });
+        }
+
+        function openScriptInEditor(id) {
+            editingScriptId = id;
+            const script = scriptsData.find(s => s.id === id);
+            if(script) {
+                setEditorMode('code');
+                document.getElementById('code-editor-title').innerText = script.name;
+                const textarea = document.getElementById('code-editor-textarea');
+                textarea.disabled = false;
+                textarea.value = script.content;
+                textarea.focus();
+            }
+        }
+
+        function saveCurrentScriptContent() {
+            if(editingScriptId) {
+                const script = scriptsData.find(s => s.id === editingScriptId);
+                if(script) {
+                    script.content = document.getElementById('code-editor-textarea').value;
+                    const btn = document.getElementById('btn-save-code');
+                    const ogText = btn.innerText;
+                    btn.innerText = "Kaydedildi ✓";
+                    setTimeout(() => { btn.innerText = ogText; }, 1000);
+                }
+            }
+        }
+
+        function deleteScript(id) {
+            scriptsData = scriptsData.filter(s => s.id !== id);
+            sceneObjectsData.forEach(o => { if(o.scriptId === id) o.scriptId = null; });
+            menuObjectsData.forEach(o => { if(o.scriptId === id) o.scriptId = null; });
+            
+            if(editingScriptId === id) {
+                editingScriptId = null;
+                document.getElementById('code-editor-title').innerText = "Dosya Seçin";
+                document.getElementById('code-editor-textarea').value = "";
+                document.getElementById('code-editor-textarea').disabled = true;
+            }
+            updateHierarchyUI();
+            updateInspectorUI();
+        }
+
+        function startScriptDrag(ev, scriptId) {
+            ev.dataTransfer.setData("text/plain", "script:" + scriptId);
+        }
+
+        function startObjectDrag(ev, objId) {
+            ev.dataTransfer.setData("text/plain", "object:" + objId);
+            ev.stopPropagation();
+        }
+
+        function handleDragOver(ev) {
+            ev.preventDefault();
+            if(selectedObjectId) {
+                document.getElementById('inspector-drop-zone').classList.add('drop-zone-active');
+            }
+        }
+
+        function handleDragLeave(ev) {
+            document.getElementById('inspector-drop-zone').classList.remove('drop-zone-active');
+        }
+
+        function handleDrop(ev) {
+            ev.preventDefault();
+            document.getElementById('inspector-drop-zone').classList.remove('drop-zone-active');
+            
+            const rawData = ev.dataTransfer.getData("text/plain");
+            if(rawData.startsWith("script:")) {
+                const scriptId = rawData.split(":")[1];
+                if(scriptId && selectedObjectId) {
+                    const obj = sceneObjectsData.find(o=>o.id===selectedObjectId) || menuObjectsData.find(o=>o.id===selectedObjectId);
+                    if(obj && obj.type !== 'settings') {
+                        obj.scriptId = scriptId;
+                        updateInspectorUI();
+                        updateHierarchyUI();
+                    }
+                }
+            }
+        }
+
+        function handleObjectDropOnTree(targetId, ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            const rawData = ev.dataTransfer.getData("text/plain");
+            if(rawData.startsWith("object:")) {
+                const draggedId = rawData.split(":")[1];
+                if(draggedId && draggedId !== targetId) {
+                    const draggedObj = sceneObjectsData.find(o => o.id === draggedId);
+                    if(draggedObj) {
+                        draggedObj.parentId = targetId;
+                        rebuildSceneFromData();
+                        updateHierarchyUI();
+                    }
+                }
+            }
+        }
+
+        function handleObjectDropOnEmptyTree(ev) {
+            ev.preventDefault();
+            const rawData = ev.dataTransfer.getData("text/plain");
+            if(rawData.startsWith("object:")) {
+                const draggedId = rawData.split(":")[1];
+                const draggedObj = sceneObjectsData.find(o => o.id === draggedId);
+                if(draggedObj) {
+                    draggedObj.parentId = null;
+                    rebuildSceneFromData();
+                    updateHierarchyUI();
+                }
+            }
+        }
+
+        function removeScriptFromObject() {
+            if(!selectedObjectId) return;
+            const obj = sceneObjectsData.find(o=>o.id===selectedObjectId) || menuObjectsData.find(o=>o.id===selectedObjectId);
+            if(obj) {
+                obj.scriptId = null;
+                updateInspectorUI();
+                updateHierarchyUI();
+            }
+        }
+
+        function uiCloseProject() {
+            uiSaveProject();
+            document.getElementById('editor-view').style.display = 'none';
+            document.getElementById('hub-view').style.display = 'flex';
+            currentProject = null;
+            selectedObjectId = null;
+            editingScriptId = null;
+            if(transformControl) transformControl.detach();
+            if(selectionBox) selectionBox.visible = false;
+            
+            if(threeScene) { while(threeScene.children.length > 0){ threeScene.remove(threeScene.children[0]); } }
+            if(animationId) cancelAnimationFrame(animationId);
+            renderHub();
+        }
+
+        let promptCallback = null;
+        function promptUser(message, defaultValue, callback) {
+            document.getElementById('prompt-message').innerText = message;
+            const input = document.getElementById('prompt-input');
+            input.value = defaultValue || "";
+            document.getElementById('modal-prompt').style.display = 'flex';
+            input.focus();
+            promptCallback = callback;
+        }
+        function closePrompt(isOk) {
+            document.getElementById('modal-prompt').style.display = 'none';
+            if(promptCallback) {
+                const val = document.getElementById('prompt-input').value;
+                promptCallback(isOk ? val : null);
+                promptCallback = null;
+            }
+        }
+
+        let threeScene, threeCamera, threeRenderer, animationId, transformControl, raycaster, mouse, selectionBox;
+        const sceneMeshes = {}; 
+
+        function initThreeJS() {
+            const container = document.getElementById('scene-3d');
+            container.innerHTML = ''; 
+
+            threeScene = new THREE.Scene();
+            threeScene.background = new THREE.Color(0x2b333a);
+            
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            threeScene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(10, 20, 10);
+            threeScene.add(dirLight);
+
+            const gridHelper = new THREE.GridHelper(100, 100, 0x555555, 0x333333);
+            threeScene.add(gridHelper);
+
+            threeCamera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
+            threeCamera.position.set(0, 5, 10);
+            threeCamera.lookAt(0, 0, 0);
+
+            threeRenderer = new THREE.WebGLRenderer({ antialias: true });
+            threeRenderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(threeRenderer.domElement);
+
+            selectionBox = new THREE.BoxHelper();
+            selectionBox.material.color.setHex(0x00ffff);
+            selectionBox.material.depthTest = false;
+            selectionBox.visible = false;
+            threeScene.add(selectionBox);
+
+            transformControl = new THREE.TransformControls(threeCamera, threeRenderer.domElement);
+            transformControl.addEventListener('change', () => { 
+                if(editorMode === '3d') threeRenderer.render(threeScene, threeCamera); 
+            });
+            transformControl.addEventListener('dragging-changed', function (event) {
+                isTransformDragging = event.value;
+            });
+            transformControl.addEventListener('objectChange', () => {
+                if(selectedObjectId && sceneMeshes[selectedObjectId]) {
+                    syncMeshToData(selectedObjectId);
+                    updateInspectorUI();
+                }
+            });
+            threeScene.add(transformControl);
+
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            setupEditorControls(container);
+
+            window.addEventListener('resize', () => {
+                if(!container.clientWidth) return;
+                threeCamera.aspect = container.clientWidth / container.clientHeight;
+                threeCamera.updateProjectionMatrix();
+                threeRenderer.setSize(container.clientWidth, container.clientHeight);
+            });
+
+            setTransformMode('translate');
+            animateThreeJS();
+        }
+
+        function setTransformMode(mode) {
+            if(!transformControl) return;
+            transformControl.setMode(mode);
+            document.getElementById('btn-trans').classList.toggle('active', mode==='translate');
+            document.getElementById('btn-rot').classList.toggle('active', mode==='rotate');
+            document.getElementById('btn-scl').classList.toggle('active', mode==='scale');
+        }
+
+        const keys = { w: false, a: false, s: false, d: false, ctrl: false };
+        let isRightDragging = false, isTransformDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+
+        function setupEditorControls(container) {
+            container.addEventListener('mousedown', (e) => {
+                document.getElementById('viewport-container').focus();
+                if(e.button === 2) isRightDragging = true; 
+                if(e.button === 0 && !isTransformDragging) {
+                    const rect = container.getBoundingClientRect();
+                    mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+                    mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+                    raycaster.setFromCamera(mouse, threeCamera);
+                    
+                    const interactableMeshes = Object.values(sceneMeshes);
+                    const intersects = raycaster.intersectObjects(interactableMeshes, true);
+                    
+                    if (intersects.length > 0) {
+                        let clickedMesh = intersects[0].object;
+                        while(clickedMesh && !Object.values(sceneMeshes).includes(clickedMesh)) {
+                            clickedMesh = clickedMesh.parent;
+                        }
+                        const id = Object.keys(sceneMeshes).find(key => sceneMeshes[key] === clickedMesh);
+                        if(id) selectObject(id, '3d');
+                        else selectObject(null, '3d');
+                    } else {
+                        selectObject(null, '3d');
+                    }
+                }
+            });
+            
+            window.addEventListener('mouseup', (e) => { if (e.button === 2) isRightDragging = false; });
+            window.addEventListener('mousemove', (e) => {
+                if (isRightDragging && editorMode === '3d') {
+                    const deltaX = e.movementX || e.clientX - previousMousePosition.x;
+                    const deltaY = e.movementY || e.clientY - previousMousePosition.y;
+                    
+                    threeCamera.rotation.order = 'YXZ';
+                    threeCamera.rotation.y -= deltaX * 0.005;
+                    threeCamera.rotation.x -= deltaY * 0.005;
+                    threeCamera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, threeCamera.rotation.x));
+                }
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+
+            document.getElementById('viewport-container').addEventListener('keydown', (e) => {
+                const key = e.key.toLowerCase();
+                if (keys.hasOwnProperty(key)) keys[key] = true;
+                if (e.ctrlKey) keys.ctrl = true;
+
+                if (editorMode === '3d') {
+                    if (key === 't') setTransformMode('translate');
+                    if (key === 'r') setTransformMode('rotate');
+                    if (key === 's' || key === 'y') setTransformMode('scale');
+                    
+                    if (e.ctrlKey && key === 'd') {
+                        e.preventDefault();
+                        duplicateSelectedObject();
+                    }
+                }
+                
+                if (e.ctrlKey && key === 's') {
+                    e.preventDefault();
+                    uiSaveProject();
+                }
+            });
+            
+            document.getElementById('viewport-container').addEventListener('keyup', (e) => {
+                const key = e.key.toLowerCase();
+                if (keys.hasOwnProperty(key)) keys[key] = false;
+                if (!e.ctrlKey) keys.ctrl = false;
+            });
+        }
+
+        function duplicateSelectedObject() {
+            if (!selectedObjectId || editorMode !== '3d') return;
+            const originalData = sceneObjectsData.find(o => o.id === selectedObjectId);
+            if (!originalData || originalData.type === 'settings') return;
+
+            const newId = 'obj_' + Date.now();
+            const newData = JSON.parse(JSON.stringify(originalData));
+            newData.id = newId;
+            newData.position.x += 0.5;
+            newData.position.z += 0.5;
+
+            sceneObjectsData.push(newData);
+            rebuildSceneFromData();
+            updateHierarchyUI();
+            selectObject(newId, '3d');
+        }
+
+        function animateThreeJS() {
+            animationId = requestAnimationFrame(animateThreeJS);
+            
+            if(editorMode === '3d' && document.activeElement === document.getElementById('viewport-container')) {
+                if(!isRightDragging) {
+                    const moveSpeed = 0.25;
+                    const dir = new THREE.Vector3();
+                    threeCamera.getWorldDirection(dir);
+                    dir.y = 0; dir.normalize(); 
+                    
+                    const right = new THREE.Vector3();
+                    right.crossVectors(threeCamera.up, dir).normalize();
+
+                    if (keys.w) threeCamera.position.addScaledVector(dir, moveSpeed);
+                    if (keys.s) threeCamera.position.addScaledVector(dir, -moveSpeed);
+                    if (keys.a) threeCamera.position.addScaledVector(right, moveSpeed);
+                    if (keys.d) threeCamera.position.addScaledVector(right, -moveSpeed);
+                }
+            }
+
+            if(selectionBox.visible && selectedObjectId && sceneMeshes[selectedObjectId]) {
+                selectionBox.update();
+            }
+
+            if(editorMode === '3d') threeRenderer.render(threeScene, threeCamera);
+        }
+
+        function addAssetToScene(type) {
+            if(editorMode !== '3d') return;
+            const id = 'obj_' + Date.now();
+            const data = {
+                id: id, type: type, parentId: null,
+                position: { x: 0, y: type === 'ground' ? -0.5 : 0.5, z: 0 },
+                rotation: { x: 0, y: 0, z: 0 },
+                scale: { x: 1, y: 1, z: 1 },
+                color: type === 'ground' ? 0x556b2f : (type === 'player' ? 0x00aaff : 0xcccccc),
+                collision: true,
+                scriptId: null
+            };
+            if(type !== 'ground') {
+                data.position.x += (Math.random() - 0.5) * 2;
+                data.position.z += (Math.random() - 0.5) * 2;
+                if(type === 'player') {
+                    data.position.y = 1;
+                    data.speed = 0.15;
+                    data.jumpForce = 0.2;
+                    data.gravity = 0.012;
+                }
+            }
+            sceneObjectsData.push(data);
+            rebuildSceneFromData();
+            updateHierarchyUI();
+            selectObject(id, '3d');
+        }
+
+        function rebuildSceneFromData() {
+            uiSavePropertySync();
+            Object.values(sceneMeshes).forEach(m => threeScene.remove(m));
+            for(let key in sceneMeshes) delete sceneMeshes[key];
+
+            const objectMap = {};
+            sceneObjectsData.forEach(data => {
+                if(data.type === 'settings') return;
+                let geometry, material = new THREE.MeshLambertMaterial({ color: data.color });
+                switch(data.type) {
+                    case 'cube': geometry = new THREE.BoxGeometry(1, 1, 1); break;
+                    case 'sphere': geometry = new THREE.SphereGeometry(0.5, 32, 16); break;
+                    case 'ground': geometry = new THREE.BoxGeometry(20, 1, 20); break;
+                    case 'player': geometry = new THREE.CylinderGeometry(0.5, 0.5, 1.5, 16); break;
+                    default: geometry = new THREE.BoxGeometry(1, 1, 1);
+                }
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.position.set(data.position.x, data.position.y, data.position.z);
+                if(data.rotation) mesh.rotation.set(data.rotation.x, data.rotation.y, data.rotation.z);
+                if(data.scale) mesh.scale.set(data.scale.x, data.scale.y, data.scale.z);
+                
+                sceneMeshes[data.id] = mesh;
+                objectMap[data.id] = mesh;
+            });
+
+            sceneObjectsData.forEach(data => {
+                if(data.type === 'settings') return;
+                const mesh = objectMap[data.id];
+                if(mesh) {
+                    if(data.parentId && objectMap[data.parentId]) {
+                        objectMap[data.parentId].add(mesh);
+                    } else {
+                        threeScene.add(mesh);
+                    }
+                }
+            });
+
+            if(selectedObjectId && sceneMeshes[selectedObjectId]) {
+                transformControl.attach(sceneMeshes[selectedObjectId]);
+                selectionBox.setFromObject(sceneMeshes[selectedObjectId]);
+                selectionBox.visible = true;
+            }
+        }
+
+        function syncMeshToData(id) {
+            const mesh = sceneMeshes[id];
+            const data = sceneObjectsData.find(o => o.id === id);
+            if(mesh && data && data.type !== 'settings') {
+                data.position = { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z };
+                data.rotation = { x: mesh.rotation.x, y: mesh.rotation.y, z: mesh.rotation.z };
+                data.scale = { x: mesh.scale.x, y: mesh.scale.y, z: mesh.scale.z };
+                data.color = mesh.material.color.getHex();
+            }
+        }
+
+        const menuContainer = document.getElementById('scene-2d-menu');
+        const contextMenu = document.getElementById('context-menu');
+        const hierarchyContextMenu = document.getElementById('hierarchy-context-menu');
+        let clickPos = {x:0, y:0};
+
+        menuContainer.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            clickPos = { x: e.offsetX, y: e.offsetY };
+            contextMenu.style.left = e.clientX + 'px'; contextMenu.style.top = e.clientY + 'px';
+            contextMenu.style.display = 'block';
+        });
+
+        document.getElementById('hierarchy-header').addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            hierarchyContextMenu.style.left = e.clientX + 'px'; hierarchyContextMenu.style.top = e.clientY + 'px';
+            hierarchyContextMenu.style.display = 'block';
+        });
+
+        window.addEventListener('click', (e) => {
+            if(!e.target.closest('.context-item')) {
+                contextMenu.style.display = 'none';
+                hierarchyContextMenu.style.display = 'none';
+            }
+        });
+
+        function triggerAddMenuButton(type) {
+            contextMenu.style.display = 'none';
+            if(type === 'start') {
+                createMenuButton('start', 'BAŞLA', '#28a745', clickPos.x, clickPos.y);
+            } else {
+                promptUser("Buton metni (Boş bırakırsanız isimsiz olur):", "Tıkla", (text) => {
+                    if(text === null) return;
+                    setTimeout(() => {
+                        promptUser("Hex Renk Kodu (örn: #ff0000):", "#555555", (color) => {
+                            if(color === null) return;
+                            createMenuButton('normal', text.trim(), color, clickPos.x, clickPos.y);
+                        });
+                    }, 100);
+                });
+            }
+        }
+
+        function createMenuButton(type, text, color, x, y) {
+            const data = { id: 'btn_' + Date.now(), type: type, text: text, color: color, x: x, y: y, scriptId: null };
+            menuObjectsData.push(data);
+            renderMenuElement(data);
+            updateHierarchyUI();
+        }
+
+        function renderMenuElement(data) {
+            const btn = document.createElement('button');
+            btn.innerText = data.text;
+            btn.style.position = 'absolute'; btn.style.left = data.x + 'px'; btn.style.top = data.y + 'px';
+            btn.style.backgroundColor = data.color; btn.style.color = '#fff';
+            btn.style.border = '2px solid #000'; btn.style.padding = '12px 24px';
+            btn.style.fontSize = '16px'; btn.style.fontWeight = 'bold';
+            btn.style.cursor = 'move'; btn.style.borderRadius = '5px'; btn.id = data.id;
+
+            btn.onmousedown = function(e) {
+                if(e.button !== 0) return;
+                selectObject(data.id, 'menu');
+                let shiftX = e.clientX - btn.getBoundingClientRect().left;
+                let shiftY = e.clientY - btn.getBoundingClientRect().top;
+                function moveAt(pageX, pageY) {
+                    let rect = menuContainer.getBoundingClientRect();
+                    data.x = pageX - rect.left - shiftX; data.y = pageY - rect.top - shiftY;
+                    btn.style.left = data.x + 'px'; btn.style.top = data.y + 'px';
+                    updateInspectorUI();
+                }
+                function onMouseMove(ev) { moveAt(ev.pageX, ev.pageY); }
+                document.addEventListener('mousemove', onMouseMove);
+                document.onmouseup = function() { document.removeEventListener('mousemove', onMouseMove); document.onmouseup = null; };
+            };
+            btn.ondragstart = () => false;
+            menuContainer.appendChild(btn);
+        }
+
+        function rebuildMenuFromData() {
+            menuContainer.innerHTML = '';
+            menuObjectsData.forEach(renderMenuElement);
+        }
+
+        function updateHierarchyUI() {
+            const list = document.getElementById('hierarchy-list');
+            list.innerHTML = '';
+            
+            if (editorMode === '3d' || editorMode === 'code') {
+                list.ondragover = (e) => e.preventDefault();
+                list.ondrop = (e) => handleObjectDropOnEmptyTree(e);
+
+                const renderTreeItems = (parentId, depth) => {
+                    const items = sceneObjectsData.filter(o => (o.parentId || null) === parentId && o.type !== 'settings');
+                    items.forEach(obj => {
+                        const el = document.createElement('div');
+                        el.className = `tree-item ${selectedObjectId === obj.id ? 'selected' : 'text-gray-300'}`;
+                        el.style.paddingLeft = (10 + depth * 16) + 'px';
+                        el.draggable = true;
+                        
+                        el.ondragstart = (e) => startObjectDrag(e, obj.id);
+                        el.ondragover = (e) => { e.preventDefault(); el.classList.add('drag-over'); };
+                        el.ondragleave = () => el.classList.remove('drag-over');
+                        el.ondrop = (e) => {
+                            el.classList.remove('drag-over');
+                            handleObjectDropOnTree(obj.id, e);
+                        };
+
+                        const name = obj.name || (obj.type.charAt(0).toUpperCase() + obj.type.slice(1));
+                        el.innerHTML = `
+                            <span class="flex-1 truncate">${name} ${obj.scriptId ? ' <span class="text-[10px] text-yellow-400 font-mono">(JS)</span>' : ''}</span>
+                            ${!obj.undeletable ? `<span class="text-xs text-red-400 hover:text-red-200 px-2 cursor-pointer" onclick="event.stopPropagation(); deleteObject('${obj.id}')">✕</span>` : ''}
+                        `;
+                        el.onclick = (e) => { e.stopPropagation(); selectObject(obj.id, '3d'); };
+                        list.appendChild(el);
+
+                        renderTreeItems(obj.id, depth + 1);
+                    });
+                };
+
+                renderTreeItems(null, 0);
+            } else {
+                menuObjectsData.forEach((obj) => {
+                    const el = document.createElement('div');
+                    el.className = `tree-item ${selectedObjectId === obj.id ? 'selected' : 'text-gray-300'}`;
+                    const name = obj.text || 'Buton';
+                    el.innerHTML = `
+                        <span class="flex-1 truncate">${name}</span>
+                        <span class="text-xs text-red-400 hover:text-red-200 px-2 cursor-pointer" onclick="event.stopPropagation(); deleteObject('${obj.id}')">✕</span>
+                    `;
+                    el.onclick = () => selectObject(obj.id, 'menu');
+                    list.appendChild(el);
+                });
+            }
+
+            const scriptsList = document.getElementById('hierarchy-scripts-list');
+            scriptsList.innerHTML = '<div class="text-[10px] font-bold text-gray-500 mb-1">SCRIPT DOSYALARI</div>';
+            
+            scriptsData.forEach(script => {
+                const el = document.createElement('div');
+                el.className = `tree-item script-item ${editingScriptId === script.id && editorMode === 'code' ? 'bg-[#333]' : ''}`;
+                el.draggable = true;
+                el.ondragstart = (e) => startScriptDrag(e, script.id);
+                el.ondblclick = () => openScriptInEditor(script.id);
+                el.title = "Çift tıklayarak düzenle, özelliklere sürükleyerek uygula";
+                
+                el.innerHTML = `
+                    <span class="flex-1 truncate">📄 ${script.name}</span>
+                    <span class="text-xs text-red-400 hover:text-red-200 px-2 cursor-pointer" onclick="event.stopPropagation(); deleteScript('${script.id}')">✕</span>
+                `;
+                scriptsList.appendChild(el);
+            });
+        }
+
+        function selectObject(id, mode) {
+            selectedObjectId = id;
+            if((mode === '3d' || mode === 'code') && transformControl) {
+                if(id && sceneMeshes[id]) {
+                    transformControl.attach(sceneMeshes[id]);
+                    selectionBox.setFromObject(sceneMeshes[id]);
+                    selectionBox.visible = true;
+                } else {
+                    transformControl.detach();
+                    selectionBox.visible = false;
+                }
+            } else {
+                if(selectionBox) selectionBox.visible = false;
+            }
+            updateHierarchyUI();
+            updateInspectorUI();
+        }
+
+        function deleteObject(id) {
+            if(editorMode === '3d' || editorMode === 'code') {
+                const obj = sceneObjectsData.find(o => o.id === id);
+                if(obj && obj.undeletable) return;
+                
+                sceneObjectsData.forEach(o => { if(o.parentId === id) o.parentId = null; });
+                sceneObjectsData = sceneObjectsData.filter(o => o.id !== id);
+                rebuildSceneFromData();
+            } else {
+                menuObjectsData = menuObjectsData.filter(o => o.id !== id);
+                const domEl = document.getElementById(id);
+                if(domEl) domEl.remove();
+            }
+            if(selectedObjectId === id) selectObject(null, editorMode);
+            else { updateHierarchyUI(); updateInspectorUI(); }
+        }
+
+        function updateInspectorUI() {
+            const panel = document.getElementById('inspector-panel');
+            const empty = document.getElementById('inspector-empty');
+            
+            if(!selectedObjectId) {
+                panel.style.display = 'none'; empty.style.display = 'flex'; return;
+            }
+
+            const is3D = editorMode === '3d' || editorMode === 'code';
+            const data = is3D ? sceneObjectsData.find(o=>o.id===selectedObjectId) : menuObjectsData.find(o=>o.id===selectedObjectId);
+            
+            if(!data) {
+                panel.style.display = 'none'; empty.style.display = 'flex'; return;
+            }
+
+            panel.style.display = 'block'; empty.style.display = 'none';
+
+            document.getElementById('insp-name').innerText = data.name || (is3D ? (data.type.toUpperCase() + " (ID: "+data.id.split('_')[1]+")") : "Menü Butonu");
+            
+            const transSec = document.getElementById('transform-section');
+            const physSec = document.getElementById('physics-section');
+            
+            if(data.type === 'settings') {
+                transSec.style.display = 'none';
+                physSec.style.display = 'none';
+            } else {
+                transSec.style.display = 'block';
+                document.getElementById('insp-px').value = is3D ? data.position.x.toFixed(2) : data.x;
+                document.getElementById('insp-py').value = is3D ? data.position.y.toFixed(2) : data.y;
+                document.getElementById('insp-pz').value = is3D ? data.position.z.toFixed(2) : 0;
+                document.getElementById('insp-pz').disabled = !is3D;
+
+                if(is3D) {
+                    document.getElementById('insp-rx').value = THREE.MathUtils.radToDeg(data.rotation.x).toFixed(1);
+                    document.getElementById('insp-ry').value = THREE.MathUtils.radToDeg(data.rotation.y).toFixed(1);
+                    document.getElementById('insp-rz').value = THREE.MathUtils.radToDeg(data.rotation.z).toFixed(1);
+                    
+                    document.getElementById('insp-sx').value = data.scale.x.toFixed(2);
+                    document.getElementById('insp-sy').value = data.scale.y.toFixed(2);
+                    document.getElementById('insp-sz').value = data.scale.z.toFixed(2);
+                    
+                    physSec.style.display = 'block';
+                    document.getElementById('insp-colli').checked = data.collision;
+                    
+                    if(data.type === 'player') {
+                        document.getElementById('player-props').style.display = 'block';
+                        document.getElementById('insp-speed').value = data.speed;
+                        document.getElementById('insp-jump').value = data.jumpForce;
+                        document.getElementById('insp-gravity').value = data.gravity;
+                    } else {
+                        document.getElementById('player-props').style.display = 'none';
+                    }
+                } else {
+                    ['rx','ry','rz','sx','sy','sz'].forEach(id => document.getElementById('insp-'+id).value = 0);
+                    physSec.style.display = 'none';
+                }
+                document.getElementById('insp-col').value = is3D ? '#' + data.color.toString(16).padStart(6, '0') : data.color;
+            }
+
+            const scriptNameEl = document.getElementById('insp-script-name');
+            if(data.scriptId) {
+                const s = scriptsData.find(scr => scr.id === data.scriptId);
+                scriptNameEl.innerText = s ? s.name : "Kayıp Script";
+                scriptNameEl.style.color = 'var(--js-yellow)';
+            } else {
+                scriptNameEl.innerText = "Yok (Sürükle & Bırak)";
+                scriptNameEl.style.color = '#777';
+            }
+        }
+
+        function updateObjectFromUI() {
+            if(!selectedObjectId) return;
+            const is3D = editorMode === '3d' || editorMode === 'code';
+            const data = is3D ? sceneObjectsData.find(o=>o.id===selectedObjectId) : menuObjectsData.find(o=>o.id===selectedObjectId);
+            if(!data || data.type === 'settings') return;
+
+            const px = parseFloat(document.getElementById('insp-px').value);
+            const py = parseFloat(document.getElementById('insp-py').value);
+            const pz = parseFloat(document.getElementById('insp-pz').value);
+            const col = document.getElementById('insp-col').value;
+
+            if(is3D) {
+                const rx = THREE.MathUtils.degToRad(parseFloat(document.getElementById('insp-rx').value));
+                const ry = THREE.MathUtils.degToRad(parseFloat(document.getElementById('insp-ry').value));
+                const rz = THREE.MathUtils.degToRad(parseFloat(document.getElementById('insp-rz').value));
+                const sx = parseFloat(document.getElementById('insp-sx').value);
+                const sy = parseFloat(document.getElementById('insp-sy').value);
+                const sz = parseFloat(document.getElementById('insp-sz').value);
+
+                const mesh = sceneMeshes[selectedObjectId];
+                if(mesh) {
+                    mesh.position.set(px, py, pz);
+                    mesh.rotation.set(rx, ry, rz);
+                    mesh.scale.set(sx, sy, sz);
+                    mesh.material.color.set(col);
+                    syncMeshToData(selectedObjectId);
+                    selectionBox.setFromObject(mesh);
+                }
+                
+                data.collision = document.getElementById('insp-colli').checked;
+                if(data.type === 'player') {
+                    data.speed = parseFloat(document.getElementById('insp-speed').value);
+                    data.jumpForce = parseFloat(document.getElementById('insp-jump').value);
+                    data.gravity = parseFloat(document.getElementById('insp-gravity').value);
+                }
+            } else {
+                data.x = px; data.y = py; data.color = col;
+                const dom = document.getElementById(selectedObjectId);
+                if(dom) { dom.style.left = px+'px'; dom.style.top = py+'px'; dom.style.backgroundColor = col; }
+            }
+        }
+
+        function uiOpenBuildModal() { document.getElementById('modal-build').style.display = 'flex'; }
+        function closeBuildModal() { document.getElementById('modal-build').style.display = 'none'; }
+
+        async function executeBuild() {
+            closeBuildModal();
+            const apiChoice = document.getElementById('build-api').value;
+            const camModeChoice = document.getElementById('build-cam-mode').value;
+            const useThreeJS = document.getElementById('build-threejs').value;
+            uiSaveProject(); 
+
+            const zip = new JSZip();
+            
+            const glslVS = `attribute vec3 position; uniform mat4 modelViewMatrix; uniform mat4 projectionMatrix; void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+            const glslFS = `precision mediump float; uniform vec3 uColor; void main() { gl_FragColor = vec4(uColor, 1.0); }`;
+            const wgslCode = `struct Uniforms { modelViewMatrix : mat4x4<f32>, projectionMatrix : mat4x4<f32>, color : vec3<f32>, }; @binding(0) @group(0) var<uniform> uniforms : Uniforms; struct VertexOutput { @builtin(position) position : vec4<f32>, }; @vertex fn main(@location(0) position : vec3<f32>) -> VertexOutput { var output : VertexOutput; output.position = uniforms.projectionMatrix * uniforms.modelViewMatrix * vec4<f32>(position, 1.0); return output; } @fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(uniforms.color, 1.0); }`;
+
+            if(apiChoice === 'webgl') {
+                zip.folder("glsl").file("vertex.glsl", glslVS);
+                zip.folder("glsl").file("fragment.glsl", glslFS);
+            }
+            if(apiChoice === 'webgpu') {
+                zip.folder("wgsl").file("shader.wgsl", wgslCode);
+            }
+
+            let gameScript = `
+const sceneData = ${JSON.stringify(sceneObjectsData)};
+const menuData = ${JSON.stringify(menuObjectsData)};
+const scriptsData = ${JSON.stringify(scriptsData)};
+const graphicsAPI = '${apiChoice}';
+const cameraMode = '${camModeChoice}';
+
+const scriptFunctions = {};
+scriptsData.forEach(s => {
+    try {
+        scriptFunctions[s.id] = new Function('mesh', 'data', 'scene', 'camera', 'keys', 'time', 'renderer', s.content);
+    } catch(e) {}
+});
+
+const menuUi = document.getElementById('menu-ui');
+const gameCanvas = document.getElementById('game-canvas');
+const crosshair = document.getElementById('crosshair');
+const sceneMeshesMap = {};
+
+let isPointerLocked = false;
+document.addEventListener('pointerlockchange', () => {
+    isPointerLocked = (document.pointerLockElement === gameCanvas);
+});
+
+if(menuData.length === 0) { startGame(); }
+else {
+    menuData.forEach(data => {
+        const btn = document.createElement('button');
+        btn.className = 'game-btn'; btn.innerText = data.text;
+        btn.style.left = data.x + 'px'; btn.style.top = data.y + 'px'; btn.style.backgroundColor = data.color;
+        
+        btn.onclick = () => {
+            if(data.scriptId && scriptFunctions[data.scriptId]) {
+                try { scriptFunctions[data.scriptId](btn, data, null, null, null, performance.now()*0.001, null); } catch(e){}
+            }
+            if(data.type === 'start') startGame(); 
+        };
+        menuUi.appendChild(btn);
+    });
+}
+
+function startGame() {
+    menuUi.style.display = 'none';
+    gameCanvas.style.display = 'block';
+    if(cameraMode === 'fps') crosshair.style.display = 'block';
+    
+    gameCanvas.requestPointerLock = gameCanvas.requestPointerLock || gameCanvas.mozRequestPointerLock;
+    gameCanvas.requestPointerLock();
+    initEngine();
+}
+
+gameCanvas.addEventListener('click', () => {
+    if(!isPointerLocked) gameCanvas.requestPointerLock();
+});
+
+const keys = { w: false, a: false, s: false, d: false, ' ': false };
+window.addEventListener('keydown', e => { 
+    const k = e.key.toLowerCase();
+    if (k === 'w' || k === 'arrowup') keys.w = true;
+    if (k === 's' || k === 'arrowdown') keys.s = true;
+    if (k === 'a' || k === 'arrowleft') keys.a = true;
+    if (k === 'd' || k === 'arrowright') keys.d = true;
+    if (e.code === 'Space' || k === ' ') keys[' '] = true;
+});
+window.addEventListener('keyup', e => { 
+    const k = e.key.toLowerCase();
+    if (k === 'w' || k === 'arrowup') keys.w = false;
+    if (k === 's' || k === 'arrowdown') keys.s = false;
+    if (k === 'a' || k === 'arrowleft') keys.a = false;
+    if (k === 'd' || k === 'arrowright') keys.d = false;
+    if (e.code === 'Space' || k === ' ') keys[' '] = false;
+});
+
+function runScripts(scene, camera, renderer) {
+    const time = performance.now() * 0.001;
+    sceneData.forEach(data => {
+        if(data.scriptId && scriptFunctions[data.scriptId]) {
+            const mesh = sceneMeshesMap[data.id] || null;
+            try {
+                scriptFunctions[data.scriptId](mesh, data, scene, camera, keys, time, renderer);
+            } catch(e) {}
+        }
+    });
+}
+`;
+
+            if(useThreeJS === 'yes') {
+                gameScript += `
+let scene, camera, renderer, animationId;
+let playerMesh = null;
+const collidableObjects = [];
+
+let velocityY = 0;
+let gravityValue = -0.012;
+let isGrounded = false;
+let playerSpeed = 0.15;
+let jumpForce = 0.25;
+let playerBox = new THREE.Box3();
+let camYaw = 0, camPitch = 0;
+let currentBank = 0;
+let idealCamPos = new THREE.Vector3();
+
+function initEngine() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87CEEB); 
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, graphicsAPI === 'canvas' ? 0.9 : 0.4);
+    scene.add(ambientLight);
+    
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(20, 40, 20);
+    
+    if(graphicsAPI !== 'canvas') {
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.near = 0.5;
+        dirLight.shadow.camera.far = 100;
+        dirLight.shadow.camera.left = -20;
+        dirLight.shadow.camera.right = 20;
+        dirLight.shadow.camera.top = 20;
+        dirLight.shadow.camera.bottom = -20;
+    }
+    scene.add(dirLight);
+
+    camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.rotation.order = 'YXZ';
+
+    if (graphicsAPI === 'webgpu' && typeof THREE.WebGPURenderer !== 'undefined') {
+        renderer = new THREE.WebGPURenderer({ canvas: gameCanvas, antialias: true });
+        if (renderer.init) renderer.init();
+    } else {
+        renderer = new THREE.WebGLRenderer({ canvas: gameCanvas, antialias: true });
+    }
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    if(graphicsAPI !== 'canvas') {
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    }
+
+    const objectMap = {};
+    sceneData.forEach(data => {
+        if(data.type === 'settings') return;
+        let geo, mat = new THREE.MeshLambertMaterial({ color: data.color });
+        switch(data.type) {
+            case 'cube': geo = new THREE.BoxGeometry(1, 1, 1); break;
+            case 'sphere': geo = new THREE.SphereGeometry(0.5, 32, 16); break;
+            case 'ground': geo = new THREE.BoxGeometry(20, 1, 20); break;
+            case 'player': geo = new THREE.CylinderGeometry(0.4, 0.4, 1.8, 16); break;
+            default: geo = new THREE.BoxGeometry(1, 1, 1);
+        }
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(data.position.x, data.position.y, data.position.z);
+        if(data.rotation) mesh.rotation.set(data.rotation.x, data.rotation.y, data.rotation.z);
+        if(data.scale) mesh.scale.set(data.scale.x, data.scale.y, data.scale.z);
+        
+        if(graphicsAPI !== 'canvas') {
+            mesh.castShadow = (data.type !== 'ground');
+            mesh.receiveShadow = true;
+        }
+        sceneMeshesMap[data.id] = mesh;
+        objectMap[data.id] = mesh;
+
+        if(data.type === 'player' && !playerMesh) {
+            playerMesh = mesh;
+            playerMesh.visible = (cameraMode === 'cinematic');
+            playerSpeed = data.speed || 0.15;
+            jumpForce = data.jumpForce || 0.25;
+            gravityValue = -(data.gravity !== undefined ? data.gravity : 0.012);
+            camera.position.copy(playerMesh.position);
+            if(cameraMode === 'fps') camera.position.y += 0.8;
+        } else if (data.collision) {
+            mesh.geometry.computeBoundingBox();
+            collidableObjects.push(mesh);
+        }
+    });
+
+    sceneData.forEach(data => {
+        if(data.type === 'settings') return;
+        const mesh = objectMap[data.id];
+        if(mesh) {
+            if(data.parentId && objectMap[data.parentId]) {
+                objectMap[data.parentId].add(mesh);
+            } else {
+                scene.add(mesh);
+            }
+        }
+    });
+
+    if(!playerMesh) {
+        camera.position.set(0, 2, 5);
+        camera.lookAt(0,0,0);
+    }
+
+    document.addEventListener('mousemove', (e) => {
+        if (isPointerLocked) {
+            camYaw -= e.movementX * 0.002;
+            camPitch -= e.movementY * 0.002;
+            camPitch = Math.max(-Math.PI/2.2, Math.min(Math.PI/3, camPitch));
+
+            if(cameraMode === 'cinematic') {
+                let turnDelta = -e.movementX * 0.0015;
+                currentBank = THREE.MathUtils.lerp(currentBank, turnDelta * 1.5, 0.1);
+            } else {
+                currentBank = 0;
+            }
+        }
+    });
+    
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+}
+
+function checkCollision(newPos) {
+    playerBox.setFromObject(playerMesh);
+    const offset = new THREE.Vector3().subVectors(newPos, playerMesh.position);
+    playerBox.translate(offset);
+    for(let i=0; i<collidableObjects.length; i++) {
+        const objBox = new THREE.Box3().setFromObject(collidableObjects[i]);
+        if(playerBox.intersectsBox(objBox)) return true;
+    }
+    return false;
+}
+
+function animate() {
+    animationId = requestAnimationFrame(animate);
+    
+    runScripts(scene, camera, renderer);
+    
+    if(isPointerLocked && playerMesh) {
+        const fwdX = -Math.sin(camYaw);
+        const fwdZ = -Math.cos(camYaw);
+        const rightX = -fwdZ;
+        const rightZ = fwdX;
+
+        let moveX = 0, moveZ = 0;
+        if(keys.w) { moveX += fwdX * playerSpeed; moveZ += fwdZ * playerSpeed; }
+        if(keys.s) { moveX -= fwdX * playerSpeed; moveZ -= fwdZ * playerSpeed; }
+        if(keys.a) { moveX -= rightX * playerSpeed; moveZ -= rightZ * playerSpeed; }
+        if(keys.d) { moveX += rightX * playerSpeed; moveZ += rightZ * playerSpeed; }
+
+        let nextPosX = playerMesh.position.clone(); nextPosX.x += moveX;
+        if(!checkCollision(nextPosX)) playerMesh.position.copy(nextPosX);
+
+        let nextPosZ = playerMesh.position.clone(); nextPosZ.z += moveZ;
+        if(!checkCollision(nextPosZ)) playerMesh.position.copy(nextPosZ);
+
+        if(keys[' '] && isGrounded) {
+            velocityY = jumpForce;
+            isGrounded = false;
+        }
+
+        velocityY += gravityValue;
+        let nextPosY = playerMesh.position.clone();
+        nextPosY.y += velocityY;
+
+        if(checkCollision(nextPosY)) {
+            if(velocityY < 0) isGrounded = true; 
+            velocityY = 0;
+        } else {
+            playerMesh.position.y += velocityY;
+            isGrounded = false;
+        }
+        
+        if(playerMesh.position.y < -20) {
+            playerMesh.position.set(0, 5, 0); velocityY = 0;
+        }
+
+        if(cameraMode === 'cinematic') {
+            const offsetDist = 4.5;
+            const offsetHeight = 1.8;
+            
+            let targetCamX = playerMesh.position.x + Math.sin(camYaw) * offsetDist;
+            let targetCamZ = playerMesh.position.z + Math.cos(camYaw) * offsetDist;
+            let targetCamY = playerMesh.position.y + offsetHeight + Math.sin(camPitch) * 2;
+
+            idealCamPos.set(targetCamX, targetCamY, targetCamZ);
+            camera.position.lerp(idealCamPos, 0.15);
+
+            let lookTarget = playerMesh.position.clone();
+            lookTarget.y += 0.8;
+            camera.lookAt(lookTarget);
+
+            camera.rotation.z = currentBank;
+            currentBank = THREE.MathUtils.lerp(currentBank, 0, 0.05);
+        } else {
+            camera.position.x = playerMesh.position.x;
+            camera.position.y = playerMesh.position.y + 0.8;
+            camera.position.z = playerMesh.position.z;
+            
+            camera.rotation.set(camPitch, camYaw, 0, 'YXZ');
+        }
+    }
+    
+    renderer.render(scene, camera);
+}
+`;
+            } else {
+                gameScript += `
+let gl, program, posLoc, colorLoc, matrixLoc;
+let canvasWidth, canvasHeight;
+let camera = { x:0, y:2, z:5, yaw:0, pitch:0 };
+let player = { x:0, y:2, z:5, speed: 0.15, jumpForce: 0.2, gravity: 0.012, vy: 0, grounded: false, radius: 0.4, height: 1.8 };
+let currentBank = 0;
+
+function initEngine() {
+    canvasWidth = window.innerWidth;
+    canvasHeight = window.innerHeight;
+    gameCanvas.width = canvasWidth;
+    gameCanvas.height = canvasHeight;
+    gl = gameCanvas.getContext(graphicsAPI === 'canvas' ? 'webgl' : graphicsAPI) || gameCanvas.getContext('experimental-webgl');
+    
+    if(!gl) { alert('Bu tarayıcı Vanilla WebGL desteklemiyor. Three.js ile derleyin.'); return; }
+
+    const vsSource = \`
+        attribute vec4 aVertexPosition;
+        attribute vec4 aVertexColor;
+        uniform mat4 uMVPMatrix;
+        varying lowp vec4 vColor;
+        void main(void) {
+            gl_Position = uMVPMatrix * aVertexPosition;
+            vColor = aVertexColor;
+        }
+    \`;
+    const fsSource = \`
+        varying lowp vec4 vColor;
+        void main(void) { gl_FragColor = vColor; }
+    \`;
+
+    function compileShader(type, source) {
+        const s = gl.createShader(type);
+        gl.shaderSource(s, source);
+        gl.compileShader(s);
+        return s;
+    }
+    
+    program = gl.createProgram();
+    gl.attachShader(program, compileShader(gl.VERTEX_SHADER, vsSource));
+    gl.attachShader(program, compileShader(gl.FRAGMENT_SHADER, fsSource));
+    gl.linkProgram(program);
+    gl.useProgram(program);
+
+    posLoc = gl.getAttribLocation(program, 'aVertexPosition');
+    colorLoc = gl.getAttribLocation(program, 'aVertexColor');
+    matrixLoc = gl.getUniformLocation(program, 'uMVPMatrix');
+
+    gl.enable(gl.DEPTH_TEST);
+
+    const pData = sceneData.find(o => o.type === 'player');
+    if(pData) {
+        player.x = pData.position.x; player.y = pData.position.y; player.z = pData.position.z;
+        player.speed = pData.speed || 0.15; player.jumpForce = pData.jumpForce || 0.2;
+        player.gravity = pData.gravity !== undefined ? pData.gravity : 0.012;
+    }
+
+    document.addEventListener('mousemove', (e) => {
+        if (isPointerLocked) {
+            camera.yaw -= e.movementX * 0.002;
+            camera.pitch -= e.movementY * 0.002;
+            camera.pitch = Math.max(-Math.PI/2.1, Math.min(Math.PI/2.1, camera.pitch));
+
+            if(cameraMode === 'cinematic') {
+                let turnDelta = -e.movementX * 0.0015;
+                currentBank = currentBank * 0.8 + turnDelta * 0.3;
+            } else {
+                currentBank = 0;
+            }
+        }
+    });
+
+    window.addEventListener('resize', () => {
+        canvasWidth = window.innerWidth; canvasHeight = window.innerHeight;
+        gameCanvas.width = canvasWidth; gameCanvas.height = canvasHeight;
+        gl.viewport(0, 0, canvasWidth, canvasHeight);
+    });
+
+    requestAnimationFrame(renderLoop);
+}
+
+function hexToRgb(hex) {
+    const r = (hex >> 16 & 255) / 255;
+    const g = (hex >> 8 & 255) / 255;
+    const b = (hex & 255) / 255;
+    return [r, g, b, 1.0];
+}
+
+function aabbIntersect(b1, b2) {
+    return (b1.minX <= b2.maxX && b1.maxX >= b2.minX) &&
+           (b1.minY <= b2.maxY && b1.maxY >= b2.minY) &&
+           (b1.minZ <= b2.maxZ && b1.maxZ >= b2.minZ);
+}
+
+function getPlayerBox(x, y, z) {
+    return {
+        minX: x - player.radius, maxX: x + player.radius,
+        minY: y - player.height/2, maxY: y + player.height/2,
+        minZ: z - player.radius, maxZ: z + player.radius
+    };
+}
+
+function checkCollision(px, py, pz) {
+    const pBox = getPlayerBox(px, py, pz);
+    for(let o of sceneData) {
+        if(!o.collision || o.type === 'player' || o.type === 'settings') continue;
+        const w = (o.scale?.x || 1)/2; const h = (o.scale?.y || 1)/2; const d = (o.scale?.z || 1)/2;
+        const oBox = {
+            minX: o.position.x - w, maxX: o.position.x + w,
+            minY: o.position.y - h, maxY: o.position.y + h,
+            minZ: o.position.z - d, maxZ: o.position.z + d
+        };
+        if(aabbIntersect(pBox, oBox)) return true;
+    }
+    return false;
+}
+
+function renderLoop() {
+    runScripts(null, camera, gl);
+
+    if (isPointerLocked) {
+        const fwdX = -Math.sin(camera.yaw);
+        const fwdZ = -Math.cos(camera.yaw);
+        const rightX = -fwdZ;
+        const rightZ = fwdX;
+
+        let moveX = 0, moveZ = 0;
+        if(keys.w) { moveX += fwdX * player.speed; moveZ += fwdZ * player.speed; }
+        if(keys.s) { moveX -= fwdX * player.speed; moveZ -= fwdZ * player.speed; }
+        if(keys.a) { moveX -= rightX * player.speed; moveZ -= rightZ * player.speed; }
+        if(keys.d) { moveX += rightX * player.speed; moveZ += rightZ * player.speed; }
+
+        if(!checkCollision(player.x + moveX, player.y, player.z)) player.x += moveX;
+        if(!checkCollision(player.x, player.y, player.z + moveZ)) player.z += moveZ;
+
+        if(keys[' '] && player.grounded) { player.vy = player.jumpForce; player.grounded = false; }
+        player.vy -= player.gravity;
+        
+        if(checkCollision(player.x, player.y + player.vy, player.z)) {
+            if(player.vy < 0) player.grounded = true;
+            player.vy = 0;
+        } else {
+            player.y += player.vy;
+            player.grounded = false;
+        }
+        if(player.y < -20) { player.y = 5; player.vy = 0; }
+        
+        if(cameraMode === 'cinematic') {
+            const dist = 4.5;
+            camera.x = player.x + Math.sin(camera.yaw) * dist;
+            camera.z = player.z + Math.cos(camera.yaw) * dist;
+            camera.y = player.y + 1.8;
+            currentBank *= 0.92;
+        } else {
+            camera.x = player.x; camera.y = player.y + 0.6; camera.z = player.z;
+            currentBank = 0;
+        }
+    }
+
+    gl.clearColor(0.5, 0.8, 1.0, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    const aspect = canvasWidth / canvasHeight;
+    const fov = 70 * Math.PI / 180;
+    const f = 1.0 / Math.tan(fov / 2);
+    const projMatrix = [
+        f / aspect, 0, 0, 0,
+        0, f, 0, 0,
+        0, 0, (100+0.1)/(0.1-100), -1,
+        0, 0, (2*100*0.1)/(0.1-100), 0
+    ];
+
+    const cp = Math.cos(camera.pitch), sp = Math.sin(camera.pitch);
+    const cy = Math.cos(camera.yaw), sy = Math.sin(camera.yaw);
+    const cr = Math.cos(currentBank), sr = Math.sin(currentBank);
+    
+    const m00 = cy * cr + sy * sp * sr;
+    const m10 = -cy * sr + sy * sp * cr;
+    const m20 = sy * cp;
+    const m01 = cp * sr;
+    const m11 = cp * cr;
+    const m21 = -sp;
+    const m02 = -sy * cr + cy * sp * sr;
+    const m12 = sy * sr + cy * sp * cr;
+    const m22 = cy * cp;
+
+    const viewMatrix = [
+        m00, m01, m02, 0,
+        m10, m11, m12, 0,
+        m20, m21, m22, 0,
+        0, 0, 0, 1
+    ];
+    
+    viewMatrix[12] = -(viewMatrix[0]*camera.x + viewMatrix[4]*camera.y + viewMatrix[8]*camera.z);
+    viewMatrix[13] = -(viewMatrix[1]*camera.x + viewMatrix[5]*camera.y + viewMatrix[9]*camera.z);
+    viewMatrix[14] = -(viewMatrix[2]*camera.x + viewMatrix[6]*camera.y + viewMatrix[10]*camera.z);
+
+    const mvp = new Float32Array(16);
+    for(let i=0; i<4; i++) {
+        for(let j=0; j<4; j++) {
+            mvp[i*4+j] = projMatrix[i*4+0]*viewMatrix[0*4+j] + projMatrix[i*4+1]*viewMatrix[1*4+j] + projMatrix[i*4+2]*viewMatrix[2*4+j] + projMatrix[i*4+3]*viewMatrix[3*4+j];
+        }
+    }
+
+    const lightDir = [0.5, 1.0, 0.5];
+    const len = Math.sqrt(lightDir[0]*lightDir[0] + lightDir[1]*lightDir[1] + lightDir[2]*lightDir[2]);
+    const lX = lightDir[0]/len, lY = lightDir[1]/len, lZ = lightDir[2]/len;
+
+    sceneData.forEach(o => {
+        if((o.type === 'player' && cameraMode === 'fps') || o.type === 'settings') return;
+        const col = hexToRgb(o.color);
+        const w = (o.scale?.x || 1)/2, h = (o.scale?.y || 1)/2, d = (o.scale?.z || 1)/2;
+        const x = o.position.x, y = o.position.y, z = o.position.z;
+        
+        const verts = new Float32Array([
+            x-w,y-h,z+d, x+w,y-h,z+d, x+w,y+h,z+d, x-w,y-h,z+d, x+w,y+h,z+d, x-w,y+h,z+d,
+            x-w,y-h,z-d, x-w,y+h,z-d, x+w,y+h,z-d, x-w,y-h,z-d, x+w,y+h,z-d, x+w,y-h,z-d,
+            x-w,y+h,z-d, x-w,y+h,z+d, x+w,y+h,z+d, x-w,y+h,z-d, x+w,y+h,z+d, x+w,y+h,z-d,
+            x-w,y-h,z-d, x+w,y-h,z-d, x+w,y-h,z+d, x-w,y-h,z-d, x+w,y-h,z+d, x-w,y-h,z+d,
+            x+w,y-h,z-d, x+w,y+h,z-d, x+w,y+h,z+d, x+w,y-h,z-d, x+w,y+h,z+d, x+w,y-h,z+d,
+            x-w,y-h,z-d, x-w,y-h,z+d, x-w,y+h,z+d, x-w,y-h,z-d, x-w,y+h,z+d, x-w,y+h,z-d
+        ]);
+        
+        const normals = [
+            [0, 0, 1], [0, 0, -1], [0, 1, 0], [0, -1, 0], [1, 0, 0], [-1, 0, 0]
+        ];
+
+        const colors = new Float32Array(36 * 4);
+        for(let i=0; i<6; i++) {
+            const n = normals[i];
+            const dot = n[0]*lX + n[1]*lY + n[2]*lZ;
+            const shade = (graphicsAPI === 'canvas') ? (dot > 0 ? 1.0 : 0.4) : 1.0;
+            
+            for(let j=0; j<6; j++) {
+                colors[(i*6+j)*4] = col[0]*shade; 
+                colors[(i*6+j)*4+1] = col[1]*shade; 
+                colors[(i*6+j)*4+2] = col[2]*shade; 
+                colors[(i*6+j)*4+3] = 1;
+            }
+        }
+
+        const vBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vBuf); gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
+        gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(posLoc);
+
+        const cBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, cBuf); gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
+        gl.vertexAttribPointer(colorLoc, 4, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(colorLoc);
+
+        gl.uniformMatrix4fv(matrixLoc, false, mvp);
+        gl.drawArrays(gl.TRIANGLES, 0, 36);
+        
+        gl.deleteBuffer(vBuf); gl.deleteBuffer(cBuf);
+    });
+
+    requestAnimationFrame(renderLoop);
+}
+`;
+            }
+
+            const htmlContent = `<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${currentProject.name}</title>
+    <link rel="stylesheet" href="style.css">
+    ${useThreeJS === 'yes' && apiChoice === 'webgpu' ? `
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js"
+      }
+    }
+    <\/script>` : ''}
+    ${useThreeJS === 'yes' && apiChoice !== 'webgpu' ? `<script src="https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.min.js"><\/script>` : ''}
+</head>
+<body>
+    <div id="crosshair">+</div>
+    <div id="menu-ui"></div>
+    <canvas id="game-canvas"></canvas>
+    <script ${useThreeJS === 'yes' && apiChoice === 'webgpu' ? 'type="module"' : ''}>
+    ${useThreeJS === 'yes' && apiChoice === 'webgpu' ? 'import * as THREE from "three"; window.THREE = THREE;\n' : ''}
+    ${gameScript}
+    <\/script>
+</body>
+</html>`;
+            zip.file("index.html", htmlContent);
+
+            zip.file("style.css", `
+body { margin: 0; overflow: hidden; background-color: #000; user-select: none; font-family: 'Segoe UI', Tahoma, sans-serif; }
+#menu-ui { position: absolute; top:0; left:0; width:100%; height:100%; background: #1a1a1a; z-index: 10; }
+#game-canvas { display: none; width:100%; height:100%; outline: none; }
+.game-btn { position: absolute; padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 5px; border: 2px solid #000; cursor: pointer; color: white; transition: transform 0.1s, box-shadow 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+.game-btn:hover { transform: scale(1.05); box-shadow: 0 6px 12px rgba(0,0,0,0.5); }
+.game-btn:active { transform: scale(0.95); }
+#crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: rgba(255,255,255,0.7); font-size: 24px; pointer-events: none; display: none; z-index: 5; text-shadow: 1px 1px 2px black;}
+`);
+            
+            try {
+                const content = await zip.generateAsync({ type: "blob" });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(content);
+                const safeName = currentProject.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                link.download = safeName + "_build.zip";
+                link.click();
+                URL.revokeObjectURL(link.href);
+            } catch (err) {
+                promptUser("ZIP dosyası oluşturulurken bir hata oluştu: " + err, "", null);
+                console.error(err);
+            }
+        }
+    </script>
+</body>
+</html>
